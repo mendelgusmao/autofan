@@ -19,8 +19,9 @@ type configSpec struct {
 	MaxSpeed   int64    `yaml:"maxSpeed"`
 	HighTemp   float64  `yaml:"highTemp"`
 	NormalTemp float64  `yaml:"normalTemp"`
-	Sensors    []string `yaml:"sensors"`
+	Fan        string   `yaml:"fan"`
 	Output     string   `yaml:"output"`
+	Sensors    []string `yaml:"sensors"`
 	sensors    []*regexp.Regexp
 	interval   time.Duration
 }
@@ -80,7 +81,7 @@ func work(config *configSpec, sig chan os.Signal) {
 
 	go func() {
 		for range ticker.C {
-			temperatures, err := fetchTemperatures(config.sensors)
+			temperatures, fanSpeed, err := fetchValues(config.Fan, config.sensors)
 
 			if err != nil {
 				fmt.Println("fetching temperatures:", err)
@@ -103,7 +104,7 @@ func work(config *configSpec, sig chan os.Signal) {
 				continue
 			}
 
-			fmt.Printf("%v -- mean:%0.2f -- new fan speed:%d\n", temperatures, meanTemperature, newFanSpeed)
+			fmt.Printf("%v -- mean:%0.2f -- from %d RPM to %d RPM\n", temperatures, meanTemperature, fanSpeed, newFanSpeed)
 
 			lastMeanTemperature = meanTemperature
 		}
@@ -118,12 +119,18 @@ func work(config *configSpec, sig chan os.Signal) {
 	}
 }
 
-func fetchTemperatures(sensorsRE []*regexp.Regexp) (sensorsValues, error) {
+func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int, error) {
 	temperatures := make(sensorsValues)
+	fanSpeed := 0
 
 	for _, chip := range gosensors.GetDetectedChips() {
 		for _, feature := range chip.GetFeatures() {
 			sensorName := chip.String() + ":" + feature.GetLabel()
+
+			if sensorName == fanName {
+				fanSpeed = int(feature.GetValue())
+				continue
+			}
 
 			if len(sensorsRE) != 0 {
 				ok := false
@@ -144,7 +151,7 @@ func fetchTemperatures(sensorsRE []*regexp.Regexp) (sensorsValues, error) {
 		}
 	}
 
-	return temperatures, nil
+	return temperatures, fanSpeed, nil
 }
 
 func computeNewFanSpeed(config *configSpec, values sensorsValues) (float64, int) {
