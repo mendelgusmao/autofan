@@ -66,13 +66,10 @@ func main() {
 
 	config.interval = interval
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-
-	work(config, sig)
+	work(config)
 }
 
-func work(config *configSpec, sig chan os.Signal) {
+func work(config *configSpec) {
 	gosensors.Init()
 	defer gosensors.Cleanup()
 
@@ -109,6 +106,9 @@ func work(config *configSpec, sig chan os.Signal) {
 			lastMeanTemperature = meanTemperature
 		}
 	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
 
 	for {
 		select {
