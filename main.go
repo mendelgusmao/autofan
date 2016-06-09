@@ -104,7 +104,7 @@ func work(config *configSpec, sig chan os.Signal) {
 				continue
 			}
 
-			fmt.Printf("%v -- mean:%0.2f -- from %d RPM to %d RPM\n", temperatures, meanTemperature, fanSpeed, newFanSpeed)
+			fmt.Printf("%v -- mean:%0.1f -- from %d RPM to %d RPM\n", temperatures, meanTemperature, fanSpeed, newFanSpeed)
 
 			lastMeanTemperature = meanTemperature
 		}
@@ -138,7 +138,7 @@ func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int
 				for _, re := range sensorsRE {
 					if re.MatchString(sensorName) {
 						ok = true
-						continue
+						break
 					}
 				}
 
@@ -155,14 +155,13 @@ func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int
 }
 
 func computeNewFanSpeed(config *configSpec, values sensorsValues) (float64, int) {
-	amount := float64(len(values))
 	sum := 0.0
 
 	for _, temperature := range values {
 		sum += temperature
 	}
 
-	meanTemperature := sum / amount
+	meanTemperature := sum / float64(len(values))
 
 	return meanTemperature, int(
 		float64(config.MinSpeed) +
