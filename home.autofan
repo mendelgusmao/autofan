@@ -1,9 +1,10 @@
+mode: "mean"
 interval: "3s"
 minSpeed: 1500
 maxSpeed: 5000
 highTemp: 70
 normalTemp: 40
-fan: "applesmc-isa-0300:Master "
+fan: "applesmc-isa-0300:Master"
 output: "/sys/devices/platform/applesmc.768/fan1_output"
 sensors:
   - "coretemp-isa-0000:Core .*"
