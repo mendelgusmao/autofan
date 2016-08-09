@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type configSpec struct {
+type Autofan struct {
 	Mode       string   `yaml:"mode"`
 	Interval   string   `yaml:"interval"`
 	MinSpeed   int64    `yaml:"minSpeed"`
@@ -33,7 +33,7 @@ type sensorsValues map[string]float64
 func main() {
 	var (
 		configFile = os.Getenv("HOME") + "/.autofan"
-		config     = &configSpec{
+		autofan    = &Autofan{
 			Mode:       "mean",
 			Interval:   "3s",
 			MinSpeed:   1500,
@@ -46,58 +46,63 @@ func main() {
 		}
 	)
 
+	if err := autofan.configure(configFile); err != nil {
+		fmt.Println("configuring:", err)
+		os.Exit(1)
+	}
+
+	autofan.work()
+}
+
+func (a *Autofan) configure(configFile string) error {
 	content, err := ioutil.ReadFile(configFile)
 
 	if err != nil {
-		fmt.Println("reading config file: ", err)
-		os.Exit(1)
+		return fmt.Errorf("reading config file: %s", err)
 	}
 
-	if err := yaml.Unmarshal(content, config); err != nil {
-		fmt.Println("reading yaml:", err)
-		os.Exit(1)
+	if err := yaml.Unmarshal(content, a); err != nil {
+		return fmt.Errorf("reading yaml: %s", err)
 	}
 
-	for _, sensor := range config.Sensors {
+	for _, sensor := range a.Sensors {
 		re, err := regexp.Compile(sensor)
 
 		if err != nil {
-			fmt.Printf("build regex (%v): %v\n", sensor, err)
-			os.Exit(1)
+			return fmt.Errorf("build regex (%v): %v\n", sensor, err)
 		}
 
-		config.sensors = append(config.sensors, re)
+		a.sensors = append(a.sensors, re)
 	}
 
-	interval, err := time.ParseDuration(config.Interval)
+	interval, err := time.ParseDuration(a.Interval)
 
 	if err != nil {
-		fmt.Println("parsing interval: ", err)
-		os.Exit(1)
+		return fmt.Errorf("parsing interval: %s", err)
 	}
 
-	config.interval = interval
+	a.interval = interval
 
-	work(config)
+	return nil
 }
 
-func work(config *configSpec) {
+func (a *Autofan) work() {
 	gosensors.Init()
 	defer gosensors.Cleanup()
 
-	ticker := time.NewTicker(config.interval)
+	ticker := time.NewTicker(a.interval)
 	lastTemperature := 0.0
 
 	go func() {
 		for range ticker.C {
-			temperatures, fanSpeed := fetchValues(config.Fan, config.sensors)
+			temperatures, fanSpeed := a.fetchValues()
 
 			if len(temperatures) == 0 {
 				fmt.Println("got no temperature values. check your configuration")
 				continue
 			}
 
-			temperature, newFanSpeed, err := computeNewFanSpeed(config, temperatures)
+			temperature, newFanSpeed, err := a.computeNewFanSpeed(temperatures)
 
 			if err != nil {
 				fmt.Println(err)
@@ -108,7 +113,7 @@ func work(config *configSpec) {
 				continue
 			}
 
-			if err := ioutil.WriteFile(config.Output, []byte(strconv.Itoa(newFanSpeed)), 0644); err != nil {
+			if err := ioutil.WriteFile(a.Output, []byte(strconv.Itoa(newFanSpeed)), 0644); err != nil {
 				fmt.Println("setting fan speed:", err)
 				continue
 			}
@@ -122,16 +127,11 @@ func work(config *configSpec) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 
-	for {
-		select {
-		case <-sig:
-			fmt.Println("signal received. exiting...")
-			return
-		}
-	}
+	<-sig
+	fmt.Println("signal received. exiting...")
 }
 
-func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int) {
+func (a *Autofan) fetchValues() (sensorsValues, int) {
 	temperatures := make(sensorsValues)
 	fanSpeed := 0
 
@@ -139,15 +139,15 @@ func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int
 		for _, feature := range chip.GetFeatures() {
 			sensorName := chip.String() + ":" + feature.GetLabel()
 
-			if strings.TrimSpace(sensorName) == fanName {
+			if strings.TrimSpace(sensorName) == a.Fan {
 				fanSpeed = int(feature.GetValue())
 				continue
 			}
 
-			if len(sensorsRE) != 0 {
+			if len(a.sensors) != 0 {
 				ok := false
 
-				for _, re := range sensorsRE {
+				for _, re := range a.sensors {
 					if re.MatchString(sensorName) {
 						ok = true
 						break
@@ -166,7 +166,7 @@ func fetchValues(fanName string, sensorsRE []*regexp.Regexp) (sensorsValues, int
 	return temperatures, fanSpeed
 }
 
-func computeNewFanSpeed(config *configSpec, values sensorsValues) (float64, int, error) {
+func (a *Autofan) computeNewFanSpeed(values sensorsValues) (float64, int, error) {
 	var sum, max, temp float64
 
 	for _, temperature := range values {
@@ -177,19 +177,19 @@ func computeNewFanSpeed(config *configSpec, values sensorsValues) (float64, int,
 		}
 	}
 
-	switch config.Mode {
+	switch a.Mode {
 	case "mean":
 		temp = sum / float64(len(values))
 	case "max":
 		temp = max
 	default:
-		return 0, 0, fmt.Errorf("unrecognized mode '%s'. should be 'max' or 'mean'", config.Mode)
+		return 0, 0, fmt.Errorf("unrecognized mode '%s'. should be 'max' or 'mean'", a.Mode)
 	}
 
 	return temp, int(
-		float64(config.MinSpeed) +
-			(float64(config.MaxSpeed-config.MinSpeed) /
-				(config.HighTemp - config.NormalTemp) *
-				(temp - config.NormalTemp)),
+		float64(a.MinSpeed) +
+			(float64(a.MaxSpeed-a.MinSpeed) /
+				(a.HighTemp - a.NormalTemp) *
+				(temp - a.NormalTemp)),
 	), nil
 }
