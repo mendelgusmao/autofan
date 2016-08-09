@@ -4,6 +4,7 @@ minSpeed: 1500
 maxSpeed: 5000
 highTemp: 70
 normalTemp: 40
+variation: 0.5
 fan: "applesmc-isa-0300:Master"
 output: "/sys/devices/platform/applesmc.768/fan1_output"
 sensors:

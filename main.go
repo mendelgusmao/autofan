@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/signal"
 	"regexp"
@@ -21,6 +22,7 @@ type Autofan struct {
 	MaxSpeed   int64    `yaml:"maxSpeed"`
 	HighTemp   float64  `yaml:"highTemp"`
 	NormalTemp float64  `yaml:"normalTemp"`
+	Variation  float64  `yaml:"variation"`
 	Fan        string   `yaml:"fan"`
 	Output     string   `yaml:"output"`
 	Sensors    []string `yaml:"sensors"`
@@ -40,6 +42,7 @@ func main() {
 			MaxSpeed:   5000,
 			HighTemp:   70,
 			NormalTemp: 40,
+			Variation:  0.5,
 			Fan:        "applesmc-isa-0300:Master",
 			Output:     "/sys/devices/platform/applesmc.768/fan1_output",
 			Sensors:    []string{"coretemp-isa-0000:Core .*"},
@@ -109,7 +112,7 @@ func (a *Autofan) work() {
 				continue
 			}
 
-			if temperature == lastTemperature {
+			if temperature == lastTemperature || math.Abs(lastTemperature-temperature) < a.Variation {
 				continue
 			}
 
